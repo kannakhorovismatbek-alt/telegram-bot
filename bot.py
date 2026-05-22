@@ -1,13 +1,12 @@
 import os
 import json
-import time
-import threading
 from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
 from flask import Flask
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- TELEGRAM INFO ---
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
@@ -50,7 +49,8 @@ def get_news():
             image_url = image["src"] if image else None
 
             # Sana
-            date_text = item.select_one(".news-date").text.strip()
+            date_elem = item.select_one(".news-date")
+            date_text = date_elem.text.strip() if date_elem else ""
             try:
                 news_date = datetime.strptime(date_text, "%H:%M / %d.%m.%Y")
             except:
@@ -62,28 +62,28 @@ def get_news():
             caption = f"⚽ {title}\n\n🔗 {full_link}"
 
             # Telegramga yuborish
-            if image_url:
-                bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
-            else:
-                bot.send_message(chat_id=CHAT_ID, text=caption)
+            try:
+                if image_url:
+                    bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
+                else:
+                    bot.send_message(chat_id=CHAT_ID, text=caption)
+            except Exception as e:
+                print(f"Telegram sending error: {e}")
 
             sent_news.append(full_link)
             save_news()
     except Exception as e:
         print(f"Error fetching news: {e}")
 
-def scheduler():
-    while True:
-        get_news()
-        # Har 5 daqiqada tekshiradi
-        time.sleep(300)
-
-# Background thread ishga tushadi
-threading.Thread(target=scheduler, daemon=True).start()
+# Scheduler ishga tushadi
+scheduler = BackgroundScheduler()
+scheduler.add_job(get_news, 'interval', minutes=5)
+scheduler.start()
 
 @app.route("/")
 def home():
     return "TopGOL Bot is running and auto-checking every 5 minutes!"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
