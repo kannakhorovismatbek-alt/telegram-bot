@@ -11,7 +11,7 @@ from flask import Flask
 
 # --- TELEGRAM INFO ---
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-CHAT_ID = "6633934393"
+CHAT_ID = "@topgol_uz"
 
 bot = Bot(token=TOKEN)
 URL = "https://kun.uz/news/category/sport"
