@@ -2,8 +2,7 @@ import os
 import json
 from datetime import datetime, timedelta
 
-import requests
-from bs4 import BeautifulSoup
+import feedparser
 from telegram import Bot
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,7 +12,7 @@ TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 CHAT_ID = "@topgol_uz"
 
 bot = Bot(token=TOKEN)
-URL = "https://kun.uz/news/category/sport"
+RSS_URL = "https://kun.uz/rss/sport.xml"
 SENT_FILE = "sent_news.json"
 
 app = Flask(__name__)
@@ -31,35 +30,29 @@ def save_news():
 
 def get_news():
     try:
-        r = requests.get(URL)
-        soup = BeautifulSoup(r.text, "html.parser")
+        feed = feedparser.parse(RSS_URL)
+        three_days_ago = datetime.now() - timedelta(days=3)
 
-        news_items = soup.select(".news")[:10]
-
-        for item in news_items:
-            title = item.get_text(strip=True)
-            link = item.find("a")["href"]
-            full_link = "https://kun.uz" + link
-
-            if full_link in sent_news:
+        for entry in feed.entries:
+            # Sana
+            published = datetime(*entry.published_parsed[:6])
+            if published < three_days_ago:
                 continue
+
+            # Takroriy yangilikni yubormaslik
+            if entry.link in sent_news:
+                continue
+
+            # Sarlavha va link
+            title = entry.title
+            link = entry.link
 
             # Rasm
-            image = item.find("img")
-            image_url = image["src"] if image else None
+            media_content = entry.get('media_content')
+            image_url = media_content[0]['url'] if media_content and len(media_content) > 0 else None
 
-            # Sana
-            date_elem = item.select_one(".news-date")
-            date_text = date_elem.text.strip() if date_elem else ""
-            try:
-                news_date = datetime.strptime(date_text, "%H:%M / %d.%m.%Y")
-            except:
-                news_date = datetime.now()
-
-            if datetime.now() - news_date > timedelta(days=3):
-                continue
-
-            caption = f"⚽ {title}\n\n🔗 {full_link}"
+            # Caption
+            caption = f"⚽ {title}\n\n🔗 {link}"
 
             # Telegramga yuborish
             try:
@@ -70,12 +63,13 @@ def get_news():
             except Exception as e:
                 print(f"Telegram sending error: {e}")
 
-            sent_news.append(full_link)
+            sent_news.append(entry.link)
             save_news()
-    except Exception as e:
-        print(f"Error fetching news: {e}")
 
-# Scheduler ishga tushadi
+    except Exception as e:
+        print(f"Error fetching RSS news: {e}")
+
+# Scheduler — har 5 daqiqada yangiliklarni tekshiradi
 scheduler = BackgroundScheduler()
 scheduler.add_job(get_news, 'interval', minutes=5)
 scheduler.start()
