@@ -22,8 +22,6 @@ ContextTypes,
 
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 
-# SIZNING TELEGRAM ID
-
 CHAT_ID = "6633934393"
 
 bot = Bot(token=TOKEN)
@@ -44,14 +42,29 @@ RSS_URL = "https://kun.uz/rss/sport.xml"
 
 SENT_FILE = "sent_news.json"
 
+# JSON faylni o'qish
+
 try:
 if os.path.exists(SENT_FILE):
 with open(SENT_FILE, "r") as f:
-sent_news = json.load(f) or []
+sent_news = json.load(f)
+
+```
+        if not isinstance(sent_news, list):
+            sent_news = []
+
 else:
-sent_news = []
+    sent_news = []
+```
+
 except:
 sent_news = []
+
+# =========================
+
+# SAVE FUNCTION
+
+# =========================
 
 def save_news():
 with open(SENT_FILE, "w") as f:
@@ -86,7 +99,7 @@ text = f"""
 🆔 Sizning ID:
 {update.effective_user.id}
 
-⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
+⚽ Endi yangi sport yangiliklari sizga yuboriladi.
 """
 
 ```
@@ -146,12 +159,15 @@ try:
 ```
             # Telegramga yuborish
             if image_url:
+
                 bot.send_photo(
                     chat_id=CHAT_ID,
                     photo=image_url,
                     caption=caption
                 )
+
             else:
+
                 bot.send_message(
                     chat_id=CHAT_ID,
                     text=caption
@@ -160,6 +176,7 @@ try:
             print("Yangi yangilik yuborildi!")
 
             sent_news.append(entry.link)
+
             save_news()
 
         except Exception as e:
@@ -176,8 +193,6 @@ except Exception as e:
 # =========================
 
 scheduler = BackgroundScheduler()
-
-# Har 5 daqiqada tekshiradi
 
 scheduler.add_job(
 get_news,
