@@ -2,128 +2,281 @@ import os
 import json
 import threading
 from datetime import datetime, timedelta
-from email.utils import parsedate_to_datetime
 
-import requests
-import xml.etree.ElementTree as ET
+import feedparser
 from flask import Flask
+from apscheduler.schedulers.background import BackgroundScheduler
+
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+ContextTypes
+)
 
-# ======================
-# KONFIGURATSIYA
-# ======================
+# =========================
+
+# TELEGRAM
+
+# =========================
+
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-CHAT_ID = "6633934393"
-RSS_URL = "https://daryo.uz/feed"  # Siz to‘g‘ri manzilni qo‘yasiz
-SENT_FILE = "sent_news.json"
 
-# ======================
-# GLOBAL
-# ======================
-app = Flask(__name__)
-sent_news = []
+CHAT_ID = "6633934393"
+
 bot = Bot(token=TOKEN)
 
-# Yuborilganlarni yuklash
+# =========================
+
+# RSS SOURCES
+
+# =========================
+
+RSS_FEEDS = [
+"https://kun.uz/rss/sport.xml",
+"https://daryo.uz/feed",
+"http://feeds.bbci.co.uk/sport/rss.xml",
+"https://www.theguardian.com/football/rss",
+"https://championat.asia/feed"
+]
+
+# =========================
+
+# FILE
+
+# =========================
+
+SENT_FILE = "sent_news.json"
+
+# =========================
+
+# FLASK
+
+# =========================
+
+app = Flask(**name**)
+
+# =========================
+
+# LOAD SENT NEWS
+
+# =========================
+
+sent_news = []
+
 if os.path.exists(SENT_FILE):
-    try:
-        with open(SENT_FILE, "r") as f:
-            sent_news = json.load(f)
-            if not isinstance(sent_news, list):
-                sent_news = []
-    except:
-        sent_news = []
+
+```
+try:
+
+    with open(SENT_FILE, "r") as f:
+
+        data = json.load(f)
+
+        if isinstance(data, list):
+
+            sent_news = data
+
+except:
+
+    sent_news = []
+```
+
+# =========================
+
+# SAVE FUNCTION
+
+# =========================
 
 def save_news():
-    with open(SENT_FILE, "w") as f:
-        json.dump(sent_news, f)
 
-# /start komandasi
+```
+with open(SENT_FILE, "w") as f:
+
+    json.dump(sent_news, f)
+```
+
+# =========================
+
+# START COMMAND
+
+# =========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ TopGOL Bot ishga tushdi!\n⚽ Sport yangiliklari keladi.")
 
-# RSS parser (feedparsiz)
-def parse_rss():
-    try:
-        r = requests.get(RSS_URL, timeout=15)
-        r.raise_for_status()
-        root = ET.fromstring(r.content)
-        items = root.findall('.//item')
-        news = []
-        for item in items:
-            title = item.findtext('title', '').strip()
-            link = item.findtext('link', '').strip()
-            pub_date_str = item.findtext('pubDate', '')
-            pub_date = None
-            if pub_date_str:
-                try:
-                    pub_date = parsedate_to_datetime(pub_date_str)
-                except:
-                    pass
-            img = None
-            enc = item.find('enclosure')
-            if enc is not None:
-                img = enc.get('url')
-            if not img:
-                media = item.find('{http://search.yahoo.com/mrss/}content')
-                if media is not None:
-                    img = media.get('url')
-            news.append((title, link, pub_date, img))
-        return news
-    except Exception as e:
-        print(f"RSS xatosi: {e}")
-        return []
+```
+text = """
+```
 
-# Yangiliklarni tekshirish va yuborish (async)
-# context argumenti job_queue uchun kerak (ixtiyoriy)
-async def check_and_send(context: ContextTypes.DEFAULT_TYPE = None):
-    global sent_news
+✅ TopGOL Bot ishga tushdi!
+
+⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
+"""
+
+```
+await update.message.reply_text(text)
+```
+
+# =========================
+
+# NEWS FUNCTION
+
+# =========================
+
+def get_news():
+
+```
+global sent_news
+
+for rss_url in RSS_FEEDS:
+
     try:
-        news = parse_rss()
-        if not news:
-            return
+
+        feed = feedparser.parse(rss_url)
+
         three_days_ago = datetime.now() - timedelta(days=3)
-        for title, link, pub_date, img_url in news:
-            if pub_date and pub_date < three_days_ago:
-                continue
-            if link in sent_news:
-                continue
-            caption = f"⚽ {title}\n\n🔗 {link}"
-            if img_url:
-                await bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=caption)
-            else:
-                await bot.send_message(chat_id=CHAT_ID, text=caption)
-            sent_news.append(link)
-            save_news()
-            print(f"✅ Yuborildi: {title}")
-    except Exception as e:
-        print(f"❌ Xato: {e}")
 
-# Flask
+        for entry in feed.entries:
+
+            try:
+
+                # Sana
+                if hasattr(entry, "published_parsed"):
+
+                    published = datetime(*entry.published_parsed[:6])
+
+                else:
+
+                    published = datetime.now()
+
+                # 3 kundan eski bo'lsa
+                if published < three_days_ago:
+                    continue
+
+                # Takroriy bo'lsa
+                if entry.link in sent_news:
+                    continue
+
+                title = entry.title
+
+                link = entry.link
+
+                # Rasm
+                image_url = None
+
+                media = entry.get("media_content")
+
+                if media:
+
+                    if len(media) > 0:
+
+                        image_url = media[0].get("url")
+
+                # Agar media bo'lmasa enclosure tekshiradi
+                if not image_url:
+
+                    if "links" in entry:
+
+                        for l in entry.links:
+
+                            if l.get("type", "").startswith("image"):
+
+                                image_url = l.get("href")
+
+                                break
+
+                caption = f"⚽ {title}\n\n🔗 {link}"
+
+                # Telegramga yuborish
+                if image_url:
+
+                    bot.send_photo(
+                        chat_id=CHAT_ID,
+                        photo=image_url,
+                        caption=caption
+                    )
+
+                else:
+
+                    bot.send_message(
+                        chat_id=CHAT_ID,
+                        text=caption
+                    )
+
+                sent_news.append(link)
+
+                save_news()
+
+                print(f"Yangi yangilik yuborildi: {title}")
+
+            except Exception as e:
+
+                print(f"Post xatosi: {e}")
+
+    except Exception as e:
+
+        print(f"RSS xatosi: {e}")
+```
+
+# =========================
+
+# SCHEDULER
+
+# =========================
+
+scheduler = BackgroundScheduler()
+
+scheduler.add_job(
+get_news,
+"interval",
+minutes=5
+)
+
+scheduler.start()
+
+# =========================
+
+# FLASK ROUTE
+
+# =========================
+
 @app.route("/")
 def home():
-    return "TopGOL Bot ishlayapti"
 
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+```
+return "TopGOL Bot ishlayapti"
+```
 
-# MAIN – sinxron
-def main():
-    # Flask thread
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    # Telegram application
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    
-    # JobQueue orqali har 5 daqiqada check_and_send ni ishga tushirish
-    # interval = 300 sekund = 5 daqiqa, first=10 (birinchi marta 10 sekunddan keyin)
-    application.job_queue.run_repeating(check_and_send, interval=300, first=10)
-    
-    # Botni ishga tushirish (bloklanadi)
-    application.run_polling()
+# =========================
 
-if __name__ == "__main__":
-    main()
+# TELEGRAM APP
+
+# =========================
+
+telegram_app = ApplicationBuilder().token(TOKEN).build()
+
+telegram_app.add_handler(
+CommandHandler("start", start)
+)
+
+# =========================
+
+# MAIN
+
+# =========================
+
+if **name** == "**main**":
+
+```
+threading.Thread(
+    target=telegram_app.run_polling,
+    daemon=True
+).start()
+
+port = int(os.environ.get("PORT", 5000))
+
+app.run(
+    host="0.0.0.0",
+    port=port
+)
+```
