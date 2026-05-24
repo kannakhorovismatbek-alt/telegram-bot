@@ -22,7 +22,7 @@ SENT_FILE = "sent_news.json"
 # ======================
 app = Flask(__name__)
 sent_news = []
-bot = Bot(token=TOKEN)  # <-- Bu global bot obyekti
+bot = Bot(token=TOKEN)
 
 # Yuborilgan yangiliklarni yuklash
 if os.path.exists(SENT_FILE):
@@ -47,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     await update.message.reply_text(text)
 
-# Yangiliklarni tekshirish va yuborish (async)
+# Yangiliklarni tekshirish va yuborish
 async def check_and_send():
     global sent_news
     try:
@@ -55,7 +55,6 @@ async def check_and_send():
         uch_kun_oldin = datetime.now() - timedelta(days=3)
 
         for entry in feed.entries:
-            # Sanani tekshirish
             if not hasattr(entry, 'published_parsed') or not entry.published_parsed:
                 continue
             published = datetime(*entry.published_parsed[:6])
@@ -67,14 +66,12 @@ async def check_and_send():
             title = entry.title
             link = entry.link
 
-            # Rasm URL olish
             image_url = None
             if hasattr(entry, 'media_content') and entry.media_content:
                 image_url = entry.media_content[0].get('url')
 
             caption = f"⚽ {title}\n\n🔗 {link}"
 
-            # Xabarni yuborish (await bilan)
             if image_url:
                 await bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
             else:
@@ -115,11 +112,11 @@ async def main():
     # Vaqtli tekshirish vazifasini boshlash
     asyncio.create_task(periodic_check())
 
-    # Botni ishga tushirish
+    # Botni ishga tushirish (bloklanadi)
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
-    await application.idle()  # Bot to‘xtaguncha kutadi
+    await application.idle()
 
 if __name__ == "__main__":
     asyncio.run(main())
