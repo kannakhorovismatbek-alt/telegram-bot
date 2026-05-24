@@ -26,14 +26,14 @@ app = Flask(__name__)
 sent_news = []
 bot = Bot(token=TOKEN)
 
-# Yuborilganlarni yuklash
+# Yuborilgan xabarlarni yuklash
 if os.path.exists(SENT_FILE):
     try:
         with open(SENT_FILE, "r") as f:
             data = json.load(f)
             if isinstance(data, list):
                 sent_news = data
-    except:
+    except Exception:
         sent_news = []
 
 def save_news():
@@ -63,7 +63,6 @@ def parse_rss():
                     pub_date = parsedate_to_datetime(pub_date_str)
                 except:
                     try:
-                        # Alternativ format
                         pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z")
                     except:
                         pass
@@ -123,20 +122,18 @@ def run_flask():
 
 # Asosiy async funksiya
 async def main():
+    # Telegram bot ilovasini yaratish
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
 
-    # Flask ni alohida threadda ishga tushirish
+    # Flaskni alohida threadda ishga tushirish
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # Vaqtli tekshiruvni boshlash
+    # Yangiliklarni tekshirish vazifasini boshlash
     asyncio.create_task(periodic_check())
 
-    # Botni ishga tushirish
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.idle()
+    # Botni ishga tushirish (bloklanadi)
+    await application.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
