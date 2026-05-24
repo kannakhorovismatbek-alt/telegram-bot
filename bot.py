@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- TELEGRAM INFO ---
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-CHAT_ID = "@topgol_uz"
+CHAT_ID = "6633934393"
 
 bot = Bot(token=TOKEN)
 RSS_URL = "https://kun.uz/rss/sport.xml"
