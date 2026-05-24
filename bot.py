@@ -1,13 +1,16 @@
 import os
 import json
+import asyncio
 import threading
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
+
 import requests
 import xml.etree.ElementTree as ET
 from flask import Flask
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ======================
 # KONFIGURATSIYA
@@ -16,17 +19,16 @@ TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 CHAT_ID = "6633934393"
 SENT_FILE = "sent_news.json"
 
-# RSS manbalari (feedparser o‘rniga qo‘lda parse qilamiz)
+# Ishlaydigan RSS manbalari (feedparser kerak emas)
 RSS_FEEDS = [
     "https://daryo.uz/feed",
     "http://feeds.bbci.co.uk/sport/rss.xml",
     "https://www.theguardian.com/football/rss",
     "https://championat.asia/feed"
-    # "https://kun.uz/rss/sport.xml" - ishlamasa olib tashlangan
 ]
 
 # ======================
-# GLOBAL
+# GLOBAL O‘ZGARUVCHILAR
 # ======================
 app = Flask(__name__)
 sent_news = []
@@ -45,14 +47,14 @@ def save_news():
     with open(SENT_FILE, "w") as f:
         json.dump(sent_news, f)
 
+# ======================
+# RSS PARSER (feedparsiz)
+# ======================
 def parse_rss_feed(url):
-    """RSS ni o‘qiydi va (sarlavha, havola, sana, rasm) ro‘yxatini qaytaradi"""
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
-        # XML namespace'lar bilan ishlash
-        ns = {'': 'http://www.w3.org/2005/Atom', 'media': 'http://search.yahoo.com/mrss/'}
         items = root.findall('.//item') or root.findall('.//entry')
         entries = []
         for item in items:
@@ -66,27 +68,27 @@ def parse_rss_feed(url):
             pub_date = None
             if pub_date_str:
                 try:
-                    # RSS standart sanasini parse qilish
-                    from email.utils import parsedate_to_datetime
                     pub_date = parsedate_to_datetime(pub_date_str)
                 except:
                     pass
-            # Rasm URL
             img_url = None
             enclosure = item.find('enclosure')
             if enclosure is not None:
                 img_url = enclosure.get('url')
             if not img_url:
-                media = item.find('.//media:content', namespaces={'media': 'http://search.yahoo.com/mrss/'})
+                media = item.find('.//{http://search.yahoo.com/mrss/}content')
                 if media is not None:
                     img_url = media.get('url')
             entries.append((title, link, pub_date, img_url))
         return entries
     except Exception as e:
-        print(f"RSS parse xatosi {url}: {e}")
+        print(f"RSS xatosi {url}: {e}")
         return []
 
-def get_news():
+# ======================
+# YANGILIKLARNI TEKSHIRISH VA YUBORISH (ASYNC)
+# ======================
+async def get_news():
     global sent_news
     three_days_ago = datetime.now() - timedelta(days=3)
 
@@ -100,9 +102,9 @@ def get_news():
                     continue
                 caption = f"⚽ {title}\n\n🔗 {link}"
                 if img_url:
-                    bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=caption)
+                    await bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=caption)
                 else:
-                    bot.send_message(chat_id=CHAT_ID, text=caption)
+                    await bot.send_message(chat_id=CHAT_ID, text=caption)
                 sent_news.append(link)
                 save_news()
                 print(f"✅ Yuborildi: {title} ({rss_url})")
@@ -110,32 +112,42 @@ def get_news():
                 print(f"❌ Yuborish xatosi: {e}")
 
 # ======================
-# FLASK
+# START KOMANDASI
+# ======================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "✅ TopGOL Bot ishga tushdi!\n⚽ Endi yangi sport yangiliklari yuboriladi."
+    )
+
+# ======================
+# FLASK SERVER
 # ======================
 @app.route("/")
 def home():
-    return "TopGOL Bot ishlayapti (feedparsiz)"
+    return "TopGOL Bot ishlayapti"
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
 # ======================
-# SCHEDULER
+# ASOSIY ASYNC FUNKSIYA
 # ======================
-scheduler = BackgroundScheduler()
-scheduler.add_job(get_news, "interval", minutes=5)
-scheduler.start()
+async def main():
+    # Flask thread
+    threading.Thread(target=run_flask, daemon=True).start()
 
-# ======================
-# TELEGRAM BOT
-# ======================
-telegram_app = ApplicationBuilder().token(TOKEN).build()
-telegram_app.add_handler(CommandHandler("start", start))
+    # Telegram bot
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ TopGOL Bot ishga tushdi!\n⚽ Yangiliklar yuboriladi.")
+    # Scheduler (AsyncIOScheduler async funksiya uchun)
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(get_news, "interval", minutes=5)
+    scheduler.start()
+
+    # Botni polling orqali ishga tushirish
+    await application.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    telegram_app.run_polling()
+    asyncio.run(main())
