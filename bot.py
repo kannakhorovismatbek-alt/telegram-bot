@@ -21,7 +21,6 @@ ContextTypes,
 # =========================
 
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-
 CHAT_ID = "6633934393"
 
 bot = Bot(token=TOKEN)
@@ -42,10 +41,16 @@ RSS_URL = "https://kun.uz/rss/sport.xml"
 
 SENT_FILE = "sent_news.json"
 
-# JSON faylni o'qish
+# =========================
 
-try:
+# LOAD SENT NEWS
+
+# =========================
+
+sent_news = []
+
 if os.path.exists(SENT_FILE):
+try:
 with open(SENT_FILE, "r") as f:
 sent_news = json.load(f)
 
@@ -53,16 +58,13 @@ sent_news = json.load(f)
         if not isinstance(sent_news, list):
             sent_news = []
 
-else:
+except:
     sent_news = []
 ```
 
-except:
-sent_news = []
-
 # =========================
 
-# SAVE FUNCTION
+# SAVE NEWS
 
 # =========================
 
@@ -99,7 +101,7 @@ text = f"""
 🆔 Sizning ID:
 {update.effective_user.id}
 
-⚽ Endi yangi sport yangiliklari sizga yuboriladi.
+⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
 """
 
 ```
@@ -129,24 +131,24 @@ try:
 
             published = datetime(*entry.published_parsed[:6])
 
-            # 3 kundan eski bo'lsa skip
+            # 3 kundan eski bo'lsa
             if published < three_days_ago:
                 continue
 
-            # Takroriy bo'lsa skip
+            # Takroriy bo'lsa
             if entry.link in sent_news:
                 continue
 
             title = entry.title
             link = entry.link
 
-            # Rasm
             image_url = None
 
             media_content = entry.get("media_content")
 
-            if media_content and len(media_content) > 0:
-                image_url = media_content[0].get("url")
+            if media_content:
+                if len(media_content) > 0:
+                    image_url = media_content[0].get("url")
 
             caption = f"""
 ```
@@ -175,7 +177,7 @@ try:
 
             print("Yangi yangilik yuborildi!")
 
-            sent_news.append(entry.link)
+            sent_news.append(link)
 
             save_news()
 
@@ -229,7 +231,7 @@ threading.Thread(
     daemon=True
 ).start()
 
-# Flask
+# Flask server
 port = int(os.environ.get("PORT", 5000))
 
 app.run(
