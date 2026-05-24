@@ -8,246 +8,136 @@ from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from telegram import Bot, Update
-from telegram.ext import (
-ApplicationBuilder,
-CommandHandler,
-ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ======================
-
-# TELEGRAM
-
+# TELEGRAM (to‘g‘ridan-to‘g‘ri kod ichida)
 # ======================
-
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-
 CHAT_ID = "6633934393"
 
 bot = Bot(token=TOKEN)
 
 # ======================
-
 # RSS
-
 # ======================
-
 RSS_URL = "https://kun.uz/rss/sport.xml"
 
 # ======================
-
 # FILE
-
 # ======================
-
 SENT_FILE = "sent_news.json"
 
 # ======================
-
 # FLASK
+# ======================
+app = Flask(__name__)
 
 # ======================
-
-app = Flask(**name**)
-
-# ======================
-
 # LOAD NEWS
-
 # ======================
-
 sent_news = []
 
 if os.path.exists(SENT_FILE):
-
-```
-try:
-
-    with open(SENT_FILE, "r") as f:
-
-        data = json.load(f)
-
-        if isinstance(data, list):
-
-            sent_news = data
-
-except:
-
-    sent_news = []
-```
+    try:
+        with open(SENT_FILE, "r") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                sent_news = data
+    except Exception:
+        sent_news = []
 
 # ======================
-
 # SAVE FUNCTION
-
 # ======================
-
 def save_news():
-
-```
-with open(SENT_FILE, "w") as f:
-
-    json.dump(sent_news, f)
-```
+    with open(SENT_FILE, "w") as f:
+        json.dump(sent_news, f)
 
 # ======================
-
 # START COMMAND
-
 # ======================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-```
-text = """
-```
-
+    text = """
 ✅ TopGOL Bot ishga tushdi!
 
 ⚽ Endi yangi sport yangiliklari sizga yuboriladi.
-"""
-
-```
-await update.message.reply_text(text)
-```
+    """
+    await update.message.reply_text(text)
 
 # ======================
-
 # NEWS FUNCTION
-
 # ======================
-
 def get_news():
+    global sent_news
+    try:
+        feed = feedparser.parse(RSS_URL)
+        three_days_ago = datetime.now() - timedelta(days=3)
 
-```
-global sent_news
+        for entry in feed.entries:
+            try:
+                # Sana mavjudligini tekshirish
+                if not hasattr(entry, 'published_parsed') or not entry.published_parsed:
+                    continue
 
-try:
+                published = datetime(*entry.published_parsed[:6])
+                if published < three_days_ago:
+                    continue
 
-    feed = feedparser.parse(RSS_URL)
+                if entry.link in sent_news:
+                    continue
 
-    three_days_ago = datetime.now() - timedelta(days=3)
+                title = entry.title
+                link = entry.link
 
-    for entry in feed.entries:
+                # Rasm URL olish
+                image_url = None
+                if hasattr(entry, 'media_content') and entry.media_content:
+                    image_url = entry.media_content[0].get('url')
 
-        try:
+                caption = f"⚽ {title}\n\n🔗 {link}"
 
-            published = datetime(*entry.published_parsed[:6])
+                if image_url:
+                    bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
+                else:
+                    bot.send_message(chat_id=CHAT_ID, text=caption)
 
-            # 3 kundan eski bo'lsa
-            if published < three_days_ago:
-                continue
+                sent_news.append(link)
+                save_news()
+                print(f"Yangi yangilik yuborildi: {title}")
 
-            # Takroriy bo'lsa
-            if entry.link in sent_news:
-                continue
+            except Exception as e:
+                print(f"Xato (entry): {e}")
 
-            title = entry.title
-
-            link = entry.link
-
-            image_url = None
-
-            media = entry.get("media_content")
-
-            if media:
-
-                if len(media) > 0:
-
-                    image_url = media[0].get("url")
-
-            caption = f"⚽ {title}\n\n🔗 {link}"
-
-            # Rasm bilan yuborish
-            if image_url:
-
-                bot.send_photo(
-                    chat_id=CHAT_ID,
-                    photo=image_url,
-                    caption=caption
-                )
-
-            else:
-
-                bot.send_message(
-                    chat_id=CHAT_ID,
-                    text=caption
-                )
-
-            sent_news.append(link)
-
-            save_news()
-
-            print("Yangi yangilik yuborildi")
-
-        except Exception as e:
-
-            print(e)
-
-except Exception as e:
-
-    print(e)
-```
+    except Exception as e:
+        print(f"Xato (feed): {e}")
 
 # ======================
-
 # SCHEDULER
-
 # ======================
-
 scheduler = BackgroundScheduler()
-
-scheduler.add_job(
-get_news,
-"interval",
-minutes=5
-)
-
+scheduler.add_job(get_news, "interval", minutes=5)
 scheduler.start()
 
 # ======================
-
 # FLASK ROUTE
-
 # ======================
-
 @app.route("/")
 def home():
-
-```
-return "TopGOL Bot ishlayapti"
-```
+    return "TopGOL Bot ishlayapti"
 
 # ======================
-
 # TELEGRAM APP
-
 # ======================
-
 telegram_app = ApplicationBuilder().token(TOKEN).build()
-
-telegram_app.add_handler(
-CommandHandler("start", start)
-)
+telegram_app.add_handler(CommandHandler("start", start))
 
 # ======================
-
 # MAIN
-
 # ======================
+if __name__ == "__main__":
+    # Botni alohida threadda polling qilish
+    threading.Thread(target=telegram_app.run_polling, daemon=True).start()
 
-if **name** == "**main**":
-
-```
-threading.Thread(
-    target=telegram_app.run_polling,
-    daemon=True
-).start()
-
-port = int(os.environ.get("PORT", 5000))
-
-app.run(
-    host="0.0.0.0",
-    port=port
-)
-```
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
