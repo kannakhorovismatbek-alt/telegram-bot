@@ -2,13 +2,12 @@ import os
 import json
 import threading
 from datetime import datetime, timedelta
-
-import feedparser
+import requests
+import xml.etree.ElementTree as ET
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
-
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ======================
 # KONFIGURATSIYA
@@ -17,22 +16,22 @@ TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 CHAT_ID = "6633934393"
 SENT_FILE = "sent_news.json"
 
+# RSS manbalari (feedparser o‘rniga qo‘lda parse qilamiz)
 RSS_FEEDS = [
-    "https://kun.uz/rss/sport.xml",
     "https://daryo.uz/feed",
     "http://feeds.bbci.co.uk/sport/rss.xml",
     "https://www.theguardian.com/football/rss",
     "https://championat.asia/feed"
+    # "https://kun.uz/rss/sport.xml" - ishlamasa olib tashlangan
 ]
 
 # ======================
-# GLOBAL O‘ZGARUVCHILAR
+# GLOBAL
 # ======================
 app = Flask(__name__)
 sent_news = []
 bot = Bot(token=TOKEN)
 
-# Yuborilgan xabarlarni yuklash
 if os.path.exists(SENT_FILE):
     try:
         with open(SENT_FILE, "r") as f:
@@ -46,104 +45,97 @@ def save_news():
     with open(SENT_FILE, "w") as f:
         json.dump(sent_news, f)
 
-# ======================
-# TELEGRAM /start
-# ======================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = """
-✅ TopGOL Bot ishga tushdi!
+def parse_rss_feed(url):
+    """RSS ni o‘qiydi va (sarlavha, havola, sana, rasm) ro‘yxatini qaytaradi"""
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        # XML namespace'lar bilan ishlash
+        ns = {'': 'http://www.w3.org/2005/Atom', 'media': 'http://search.yahoo.com/mrss/'}
+        items = root.findall('.//item') or root.findall('.//entry')
+        entries = []
+        for item in items:
+            title = item.findtext('title', '').strip()
+            link = item.findtext('link', '')
+            if not link:
+                link_elem = item.find('link')
+                if link_elem is not None:
+                    link = link_elem.get('href', '')
+            pub_date_str = item.findtext('pubDate') or item.findtext('published')
+            pub_date = None
+            if pub_date_str:
+                try:
+                    # RSS standart sanasini parse qilish
+                    from email.utils import parsedate_to_datetime
+                    pub_date = parsedate_to_datetime(pub_date_str)
+                except:
+                    pass
+            # Rasm URL
+            img_url = None
+            enclosure = item.find('enclosure')
+            if enclosure is not None:
+                img_url = enclosure.get('url')
+            if not img_url:
+                media = item.find('.//media:content', namespaces={'media': 'http://search.yahoo.com/mrss/'})
+                if media is not None:
+                    img_url = media.get('url')
+            entries.append((title, link, pub_date, img_url))
+        return entries
+    except Exception as e:
+        print(f"RSS parse xatosi {url}: {e}")
+        return []
 
-⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
-    """
-    await update.message.reply_text(text)
-
-# ======================
-# YANGILIKLARNI TEKSHIRISH VA YUBORISH
-# ======================
 def get_news():
     global sent_news
     three_days_ago = datetime.now() - timedelta(days=3)
 
     for rss_url in RSS_FEEDS:
-        try:
-            feed = feedparser.parse(rss_url)
-            for entry in feed.entries:
-                try:
-                    # Sanani olish
-                    if hasattr(entry, "published_parsed") and entry.published_parsed:
-                        published = datetime(*entry.published_parsed[:6])
-                    else:
-                        published = datetime.now()
-
-                    if published < three_days_ago:
-                        continue
-                    if entry.link in sent_news:
-                        continue
-
-                    title = entry.title
-                    link = entry.link
-
-                    # Rasm URL
-                    image_url = None
-                    media = entry.get("media_content")
-                    if media and len(media) > 0:
-                        image_url = media[0].get("url")
-
-                    if not image_url and "links" in entry:
-                        for l in entry.links:
-                            if l.get("type", "").startswith("image"):
-                                image_url = l.get("href")
-                                break
-
-                    caption = f"⚽ {title}\n\n🔗 {link}"
-
-                    # Yuborish (sync usulda)
-                    if image_url:
-                        bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
-                    else:
-                        bot.send_message(chat_id=CHAT_ID, text=caption)
-
-                    sent_news.append(link)
-                    save_news()
-                    print(f"✅ Yangilik yuborildi: {title} (manba: {rss_url})")
-
-                except Exception as e:
-                    print(f"❌ Entry xatosi: {e}")
-
-        except Exception as e:
-            print(f"❌ RSS xatosi ({rss_url}): {e}")
+        entries = parse_rss_feed(rss_url)
+        for title, link, pub_date, img_url in entries:
+            try:
+                if pub_date and pub_date < three_days_ago:
+                    continue
+                if link in sent_news:
+                    continue
+                caption = f"⚽ {title}\n\n🔗 {link}"
+                if img_url:
+                    bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=caption)
+                else:
+                    bot.send_message(chat_id=CHAT_ID, text=caption)
+                sent_news.append(link)
+                save_news()
+                print(f"✅ Yuborildi: {title} ({rss_url})")
+            except Exception as e:
+                print(f"❌ Yuborish xatosi: {e}")
 
 # ======================
 # FLASK
 # ======================
 @app.route("/")
 def home():
-    return "TopGOL Bot ishlayapti"
+    return "TopGOL Bot ishlayapti (feedparsiz)"
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
 # ======================
-# JADVAL (Scheduler)
+# SCHEDULER
 # ======================
 scheduler = BackgroundScheduler()
 scheduler.add_job(get_news, "interval", minutes=5)
 scheduler.start()
 
 # ======================
-# TELEGRAM APPLICATION
+# TELEGRAM BOT
 # ======================
-telegram_app = Application.builder().token(TOKEN).build()
+telegram_app = ApplicationBuilder().token(TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 
-# ======================
-# ASOSIY BOSHQARUV
-# ======================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ TopGOL Bot ishga tushdi!\n⚽ Yangiliklar yuboriladi.")
+
 if __name__ == "__main__":
-    # Flask-ni alohida threadda ishga tushirish
     threading.Thread(target=run_flask, daemon=True).start()
-    
-    # Botni ishga tushirish (to‘g‘ridan-to‘g‘ri, asyncio.runsiz)
-    print("Bot ishga tushmoqda...")
     telegram_app.run_polling()
