@@ -16,7 +16,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # ======================
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 CHAT_ID = "6633934393"
-RSS_URL = "https://kun.uz/rss/sport.xml"
+RSS_URL = "https://daryo.uz/feed"
 SENT_FILE = "sent_news.json"
 
 # ======================
