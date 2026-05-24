@@ -88,7 +88,7 @@ async def check_and_send():
 async def periodic_check():
     while True:
         await check_and_send()
-        await asyncio.sleep(300)  # 5 daqiqa
+        await asyncio.sleep(300)
 
 # Flask marshruti
 @app.route("/")
@@ -101,18 +101,14 @@ def run_flask():
 
 # Asosiy async funksiya
 async def main():
-    # Telegram aplikatsiyasini yaratish
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
 
-    # Flaskni alohida threadda ishga tushirish
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Vaqtli tekshirish vazifasini boshlash
     asyncio.create_task(periodic_check())
 
-    # Botni ishga tushirish (bloklanadi)
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
