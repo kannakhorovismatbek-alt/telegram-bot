@@ -1,282 +1,153 @@
 import os
 import json
+import asyncio
 import threading
 from datetime import datetime, timedelta
 
 import feedparser
 from flask import Flask
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from telegram import Bot, Update
-from telegram.ext import (
-ApplicationBuilder,
-CommandHandler,
-ContextTypes
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# =========================
-
-# TELEGRAM
-
-# =========================
-
+# ======================
+# KONFIGURATSIYA
+# ======================
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
-
 CHAT_ID = "6633934393"
-
-bot = Bot(token=TOKEN)
-
-# =========================
-
-# RSS SOURCES
-
-# =========================
-
-RSS_FEEDS = [
-"https://kun.uz/rss/sport.xml",
-"https://daryo.uz/feed",
-"http://feeds.bbci.co.uk/sport/rss.xml",
-"https://www.theguardian.com/football/rss",
-"https://championat.asia/feed"
-]
-
-# =========================
-
-# FILE
-
-# =========================
-
 SENT_FILE = "sent_news.json"
 
-# =========================
+# Bir nechta RSS manbalari
+RSS_FEEDS = [
+    "https://kun.uz/rss/sport.xml",
+    "https://daryo.uz/feed",
+    "http://feeds.bbci.co.uk/sport/rss.xml",
+    "https://www.theguardian.com/football/rss",
+    "https://championat.asia/feed"
+]
 
-# FLASK
-
-# =========================
-
-app = Flask(**name**)
-
-# =========================
-
-# LOAD SENT NEWS
-
-# =========================
-
+# ======================
+# GLOBAL O‘ZGARUVCHILAR
+# ======================
+app = Flask(__name__)
 sent_news = []
+bot = Bot(token=TOKEN)
 
+# Yuborilgan xabarlarni yuklash
 if os.path.exists(SENT_FILE):
-
-```
-try:
-
-    with open(SENT_FILE, "r") as f:
-
-        data = json.load(f)
-
-        if isinstance(data, list):
-
-            sent_news = data
-
-except:
-
-    sent_news = []
-```
-
-# =========================
-
-# SAVE FUNCTION
-
-# =========================
+    try:
+        with open(SENT_FILE, "r") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                sent_news = data
+    except:
+        sent_news = []
 
 def save_news():
+    with open(SENT_FILE, "w") as f:
+        json.dump(sent_news, f)
 
-```
-with open(SENT_FILE, "w") as f:
-
-    json.dump(sent_news, f)
-```
-
-# =========================
-
-# START COMMAND
-
-# =========================
-
+# ======================
+# TELEGRAM /start
+# ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-```
-text = """
-```
-
+    text = """
 ✅ TopGOL Bot ishga tushdi!
 
 ⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
-"""
+    """
+    await update.message.reply_text(text)
 
-```
-await update.message.reply_text(text)
-```
+# ======================
+# RSS DAN YANGILIKLARNI OLISH (ASYNC)
+# ======================
+async def get_news():
+    global sent_news
+    three_days_ago = datetime.now() - timedelta(days=3)
 
-# =========================
+    for rss_url in RSS_FEEDS:
+        try:
+            feed = feedparser.parse(rss_url)
+            for entry in feed.entries:
+                try:
+                    # Sanani olish
+                    if hasattr(entry, "published_parsed") and entry.published_parsed:
+                        published = datetime(*entry.published_parsed[:6])
+                    else:
+                        published = datetime.now()
 
-# NEWS FUNCTION
+                    if published < three_days_ago:
+                        continue
 
-# =========================
+                    if entry.link in sent_news:
+                        continue
 
-def get_news():
+                    title = entry.title
+                    link = entry.link
 
-```
-global sent_news
-
-for rss_url in RSS_FEEDS:
-
-    try:
-
-        feed = feedparser.parse(rss_url)
-
-        three_days_ago = datetime.now() - timedelta(days=3)
-
-        for entry in feed.entries:
-
-            try:
-
-                # Sana
-                if hasattr(entry, "published_parsed"):
-
-                    published = datetime(*entry.published_parsed[:6])
-
-                else:
-
-                    published = datetime.now()
-
-                # 3 kundan eski bo'lsa
-                if published < three_days_ago:
-                    continue
-
-                # Takroriy bo'lsa
-                if entry.link in sent_news:
-                    continue
-
-                title = entry.title
-
-                link = entry.link
-
-                # Rasm
-                image_url = None
-
-                media = entry.get("media_content")
-
-                if media:
-
-                    if len(media) > 0:
-
+                    # Rasm URL ni topish
+                    image_url = None
+                    media = entry.get("media_content")
+                    if media and len(media) > 0:
                         image_url = media[0].get("url")
 
-                # Agar media bo'lmasa enclosure tekshiradi
-                if not image_url:
-
-                    if "links" in entry:
-
+                    if not image_url and "links" in entry:
                         for l in entry.links:
-
                             if l.get("type", "").startswith("image"):
-
                                 image_url = l.get("href")
-
                                 break
 
-                caption = f"⚽ {title}\n\n🔗 {link}"
+                    caption = f"⚽ {title}\n\n🔗 {link}"
 
-                # Telegramga yuborish
-                if image_url:
+                    # Yuborish (async)
+                    if image_url:
+                        await bot.send_photo(chat_id=CHAT_ID, photo=image_url, caption=caption)
+                    else:
+                        await bot.send_message(chat_id=CHAT_ID, text=caption)
 
-                    bot.send_photo(
-                        chat_id=CHAT_ID,
-                        photo=image_url,
-                        caption=caption
-                    )
+                    sent_news.append(link)
+                    save_news()
+                    print(f"✅ Yangilik yuborildi: {title} (manba: {rss_url})")
 
-                else:
+                except Exception as e:
+                    print(f"❌ Entry xatosi ({rss_url}): {e}")
 
-                    bot.send_message(
-                        chat_id=CHAT_ID,
-                        text=caption
-                    )
+        except Exception as e:
+            print(f"❌ RSS xatosi ({rss_url}): {e}")
 
-                sent_news.append(link)
-
-                save_news()
-
-                print(f"Yangi yangilik yuborildi: {title}")
-
-            except Exception as e:
-
-                print(f"Post xatosi: {e}")
-
-    except Exception as e:
-
-        print(f"RSS xatosi: {e}")
-```
-
-# =========================
-
-# SCHEDULER
-
-# =========================
-
-scheduler = BackgroundScheduler()
-
-scheduler.add_job(
-get_news,
-"interval",
-minutes=5
-)
-
-scheduler.start()
-
-# =========================
-
-# FLASK ROUTE
-
-# =========================
-
+# ======================
+# FLASK
+# ======================
 @app.route("/")
 def home():
+    return "TopGOL Bot ishlayapti"
 
-```
-return "TopGOL Bot ishlayapti"
-```
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
-# =========================
+# ======================
+# ASOSIY FUNKSIYA (ASYNC)
+# ======================
+async def main():
+    # Telegram application
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
 
-# TELEGRAM APP
+    # Scheduler (async)
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(get_news, "interval", minutes=5)
+    scheduler.start()
 
-# =========================
+    # Flaskni alohida threadda ishga tushirish
+    threading.Thread(target=run_flask, daemon=True).start()
 
-telegram_app = ApplicationBuilder().token(TOKEN).build()
+    # Botni ishga tushirish
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    await application.idle()
 
-telegram_app.add_handler(
-CommandHandler("start", start)
-)
-
-# =========================
-
-# MAIN
-
-# =========================
-
-if **name** == "**main**":
-
-```
-threading.Thread(
-    target=telegram_app.run_polling,
-    daemon=True
-).start()
-
-port = int(os.environ.get("PORT", 5000))
-
-app.run(
-    host="0.0.0.0",
-    port=port
-)
-```
+if __name__ == "__main__":
+    asyncio.run(main())
