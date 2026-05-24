@@ -7,52 +7,80 @@ import feedparser
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from telegram import Bot
-from telegram import Update
-from telegram.ext import ApplicationBuilder
-from telegram.ext import CommandHandler
-from telegram.ext import ContextTypes
+from telegram import Bot, Update
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+ContextTypes
+)
+
+# ======================
+
+# TELEGRAM
+
+# ======================
 
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 
 CHAT_ID = "6633934393"
 
+bot = Bot(token=TOKEN)
+
+# ======================
+
+# RSS
+
+# ======================
+
 RSS_URL = "https://kun.uz/rss/sport.xml"
+
+# ======================
+
+# FILE
+
+# ======================
 
 SENT_FILE = "sent_news.json"
 
-bot = Bot(token=TOKEN)
+# ======================
+
+# FLASK
+
+# ======================
 
 app = Flask(**name**)
 
-# =========================
+# ======================
 
-# JSON LOAD
+# LOAD NEWS
 
-# =========================
+# ======================
 
 sent_news = []
 
-try:
 if os.path.exists(SENT_FILE):
 
 ```
+try:
+
     with open(SENT_FILE, "r") as f:
 
         data = json.load(f)
 
         if isinstance(data, list):
+
             sent_news = data
-```
 
 except:
-sent_news = []
 
-# =========================
+    sent_news = []
+```
 
-# SAVE
+# ======================
 
-# =========================
+# SAVE FUNCTION
+
+# ======================
 
 def save_news():
 
@@ -62,11 +90,11 @@ with open(SENT_FILE, "w") as f:
     json.dump(sent_news, f)
 ```
 
-# =========================
+# ======================
 
-# START
+# START COMMAND
 
-# =========================
+# ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -83,11 +111,11 @@ text = """
 await update.message.reply_text(text)
 ```
 
-# =========================
+# ======================
 
-# NEWS
+# NEWS FUNCTION
 
-# =========================
+# ======================
 
 def get_news():
 
@@ -106,9 +134,11 @@ try:
 
             published = datetime(*entry.published_parsed[:6])
 
+            # 3 kundan eski bo'lsa
             if published < three_days_ago:
                 continue
 
+            # Takroriy bo'lsa
             if entry.link in sent_news:
                 continue
 
@@ -128,6 +158,7 @@ try:
 
             caption = f"⚽ {title}\n\n🔗 {link}"
 
+            # Rasm bilan yuborish
             if image_url:
 
                 bot.send_photo(
@@ -158,11 +189,11 @@ except Exception as e:
     print(e)
 ```
 
-# =========================
+# ======================
 
 # SCHEDULER
 
-# =========================
+# ======================
 
 scheduler = BackgroundScheduler()
 
@@ -174,11 +205,11 @@ minutes=5
 
 scheduler.start()
 
-# =========================
+# ======================
 
-# FLASK
+# FLASK ROUTE
 
-# =========================
+# ======================
 
 @app.route("/")
 def home():
@@ -187,11 +218,11 @@ def home():
 return "TopGOL Bot ishlayapti"
 ```
 
-# =========================
+# ======================
 
-# TELEGRAM
+# TELEGRAM APP
 
-# =========================
+# ======================
 
 telegram_app = ApplicationBuilder().token(TOKEN).build()
 
@@ -199,11 +230,11 @@ telegram_app.add_handler(
 CommandHandler("start", start)
 )
 
-# =========================
+# ======================
 
 # MAIN
 
-# =========================
+# ======================
 
 if **name** == "**main**":
 
