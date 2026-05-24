@@ -7,101 +7,76 @@ import feedparser
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from telegram import Update, Bot
-from telegram.ext import (
-ApplicationBuilder,
-CommandHandler,
-ContextTypes,
-)
-
-# =========================
-
-# TELEGRAM
-
-# =========================
+from telegram import Bot
+from telegram import Update
+from telegram.ext import ApplicationBuilder
+from telegram.ext import CommandHandler
+from telegram.ext import ContextTypes
 
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
+
 CHAT_ID = "6633934393"
-
-bot = Bot(token=TOKEN)
-
-# =========================
-
-# RSS
-
-# =========================
 
 RSS_URL = "https://kun.uz/rss/sport.xml"
 
-# =========================
-
-# FILE
-
-# =========================
-
 SENT_FILE = "sent_news.json"
 
+bot = Bot(token=TOKEN)
+
+app = Flask(**name**)
+
 # =========================
 
-# LOAD SENT NEWS
+# JSON LOAD
 
 # =========================
 
 sent_news = []
 
-if os.path.exists(SENT_FILE):
 try:
-with open(SENT_FILE, "r") as f:
-sent_news = json.load(f)
+if os.path.exists(SENT_FILE):
 
 ```
-        if not isinstance(sent_news, list):
-            sent_news = []
+    with open(SENT_FILE, "r") as f:
+
+        data = json.load(f)
+
+        if isinstance(data, list):
+            sent_news = data
+```
 
 except:
-    sent_news = []
-```
+sent_news = []
 
 # =========================
 
-# SAVE NEWS
+# SAVE
 
 # =========================
 
 def save_news():
+
+```
 with open(SENT_FILE, "w") as f:
-json.dump(sent_news, f)
+
+    json.dump(sent_news, f)
+```
 
 # =========================
 
-# FLASK
-
-# =========================
-
-app = Flask(**name**)
-
-@app.route("/")
-def home():
-return "TopGOL Bot ishlayapti!"
-
-# =========================
-
-# START COMMAND
+# START
 
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ```
-text = f"""
+text = """
 ```
 
 ✅ TopGOL Bot ishga tushdi!
 
-🆔 Sizning ID:
-{update.effective_user.id}
-
-⚽ Endi yangi sport yangiliklari sizga avtomatik yuboriladi.
+⚽ Endi yangi sport yangiliklari sizga yuboriladi.
 """
 
 ```
@@ -110,7 +85,7 @@ await update.message.reply_text(text)
 
 # =========================
 
-# NEWS FUNCTION
+# NEWS
 
 # =========================
 
@@ -131,35 +106,28 @@ try:
 
             published = datetime(*entry.published_parsed[:6])
 
-            # 3 kundan eski bo'lsa
             if published < three_days_ago:
                 continue
 
-            # Takroriy bo'lsa
             if entry.link in sent_news:
                 continue
 
             title = entry.title
+
             link = entry.link
 
             image_url = None
 
-            media_content = entry.get("media_content")
+            media = entry.get("media_content")
 
-            if media_content:
-                if len(media_content) > 0:
-                    image_url = media_content[0].get("url")
+            if media:
 
-            caption = f"""
-```
+                if len(media) > 0:
 
-⚽ {title}
+                    image_url = media[0].get("url")
 
-🔗 {link}
-"""
+            caption = f"⚽ {title}\n\n🔗 {link}"
 
-```
-            # Telegramga yuborish
             if image_url:
 
                 bot.send_photo(
@@ -175,17 +143,19 @@ try:
                     text=caption
                 )
 
-            print("Yangi yangilik yuborildi!")
-
             sent_news.append(link)
 
             save_news()
 
+            print("Yangi yangilik yuborildi")
+
         except Exception as e:
-            print(f"Yangilik xatosi: {e}")
+
+            print(e)
 
 except Exception as e:
-    print(f"RSS xatosi: {e}")
+
+    print(e)
 ```
 
 # =========================
@@ -206,7 +176,20 @@ scheduler.start()
 
 # =========================
 
-# TELEGRAM BOT
+# FLASK
+
+# =========================
+
+@app.route("/")
+def home():
+
+```
+return "TopGOL Bot ishlayapti"
+```
+
+# =========================
+
+# TELEGRAM
 
 # =========================
 
@@ -225,13 +208,11 @@ CommandHandler("start", start)
 if **name** == "**main**":
 
 ```
-# Telegram polling
 threading.Thread(
     target=telegram_app.run_polling,
     daemon=True
 ).start()
 
-# Flask server
 port = int(os.environ.get("PORT", 5000))
 
 app.run(
