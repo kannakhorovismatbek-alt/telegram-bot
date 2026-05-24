@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # ======================
 TOKEN = "8123494698:AAFDNeXyveuGBHAvtm9VPreF4Q2usmMZNlU"
 CHAT_ID = "6633934393"
-RSS_URL = "https://kun.uz/uz/rss/sport"  # Siz o‘zgartirasiz
+RSS_URL = "https://daryo.uz/feed"  # Siz to‘g‘ri manzilni qo‘yasiz
 SENT_FILE = "sent_news.json"
 
 # ======================
@@ -76,7 +76,8 @@ def parse_rss():
         return []
 
 # Yangiliklarni tekshirish va yuborish (async)
-async def check_and_send():
+# context argumenti job_queue uchun kerak (ixtiyoriy)
+async def check_and_send(context: ContextTypes.DEFAULT_TYPE = None):
     global sent_news
     try:
         news = parse_rss()
@@ -95,9 +96,9 @@ async def check_and_send():
                 await bot.send_message(chat_id=CHAT_ID, text=caption)
             sent_news.append(link)
             save_news()
-            print(f"Yuborildi: {title}")
+            print(f"✅ Yuborildi: {title}")
     except Exception as e:
-        print(f"Xato: {e}")
+        print(f"❌ Xato: {e}")
 
 # Flask
 @app.route("/")
@@ -108,7 +109,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-# MAIN – sinxron, hech qanday asyncio.run() yo‘q
+# MAIN – sinxron
 def main():
     # Flask thread
     threading.Thread(target=run_flask, daemon=True).start()
@@ -117,10 +118,11 @@ def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     
-    # Job queue orqali har 5 daqiqada tekshirish
-    application.job_queue.run_repeating(lambda ctx: check_and_send(), interval=300, first=10)
+    # JobQueue orqali har 5 daqiqada check_and_send ni ishga tushirish
+    # interval = 300 sekund = 5 daqiqa, first=10 (birinchi marta 10 sekunddan keyin)
+    application.job_queue.run_repeating(check_and_send, interval=300, first=10)
     
-    # Botni ishga tushirish – bloklanadi, hech qanday event loop xatosi yo‘q
+    # Botni ishga tushirish (bloklanadi)
     application.run_polling()
 
 if __name__ == "__main__":
